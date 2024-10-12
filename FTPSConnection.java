@@ -1,3 +1,4 @@
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -14,7 +15,7 @@ import org.apache.commons.net.ftp.FTPFile;
 public class FTPSConnection {
 
     public static void main(String[] args) {
-       Collection<String> message = new ArrayList<>();
+        Collection<String> message = new ArrayList<>();
         String server = "";
         int port = 990;
         String user = "";
@@ -56,18 +57,23 @@ public class FTPSConnection {
                         }
                     }
                     Thread.sleep(40000);  // Wait for 10 seconds
+                    String errorDir = "/ERROR/";      // FTP folder for error files
+                    String processedDir = "/PROCESSED/";  // FTP folder for processed files
+                    createDirectoryIfNotExists(ftpsClient, errorDir);
+                    createDirectoryIfNotExists(ftpsClient, processedDir);
                     String nameWithoutExtension = ftpFile.split("\\.")[0];
                     FTPFile[] files = ftpsClient.listFiles();
                     for (FTPFile file : files) {
                         String fileType = file.isDirectory() ? "Directory" : "File";
                         System.out.println(fileType + ": " + file.getName());
-                        if (file.isFile() && file.getName().contains(nameWithoutExtension)) {
-                            String remoteFilePath = file.getName();
+                        String remoteFilePath = file.getName();
+                        String fileExtension = getFileExtension(remoteFilePath);
+                        if (file.isFile() && remoteFilePath.contains(nameWithoutExtension)) {
                             System.out.println("Found file: " + remoteFilePath);
                             try ( InputStream inpStream = ftpsClient.retrieveFileStream(remoteFilePath);  BufferedReader reader = new BufferedReader(new InputStreamReader(inpStream, StandardCharsets.UTF_8))) {
                                 String line;
                                 while ((line = reader.readLine()) != null) {
-                                    if (remoteFilePath.endsWith(".man")) {
+                                    if ("man".equalsIgnoreCase(fileExtension)) {
                                         message.add("File processed successfully....  " + line);
                                     } else {
                                         message.add(line);
@@ -76,6 +82,11 @@ public class FTPSConnection {
                             } catch (Exception e) {
 
                             }
+                        }
+                        if ("err".equalsIgnoreCase(fileExtension)) {
+                            moveFile(ftpsClient, remoteFilePath, errorDir);
+                        } else if ("man".equalsIgnoreCase(fileExtension)) {
+                            moveFile(ftpsClient, remoteFilePath, processedDir);
                         }
                     }
                 } catch (IOException | InterruptedException ex) {
@@ -94,6 +105,34 @@ public class FTPSConnection {
                     System.out.println("Disconnected.");
                 }
             } catch (IOException ex) {
+            }
+        }
+    }
+
+    private static String getFileExtension(String fileName) {
+        int lastIndexOfDot = fileName.lastIndexOf('.');
+        return (lastIndexOfDot == -1) ? "" : fileName.substring(lastIndexOfDot + 1);
+    }
+
+    private static void moveFile(FTPSClient ftpsClient, String fileName, String targetDir) throws IOException {
+        String sourcePath = "/" + fileName;
+        String destinationPath = targetDir + fileName;
+        boolean success = ftpsClient.rename(sourcePath, destinationPath);
+        if (success) {
+            System.out.println("Moved file: " + fileName + " to " + targetDir);
+        } else {
+            System.out.println("Failed to move file: " + fileName);
+        }
+    }
+
+    private static void createDirectoryIfNotExists(FTPSClient ftpsClient, String dirPath) throws IOException {
+        boolean dirExists = ftpsClient.changeWorkingDirectory(dirPath);
+        if (!dirExists) {
+            boolean created = ftpsClient.makeDirectory(dirPath);
+            if (created) {
+                System.out.println("Created directory: " + dirPath);
+            } else {
+                System.out.println("Failed to create directory: " + dirPath);
             }
         }
     }
